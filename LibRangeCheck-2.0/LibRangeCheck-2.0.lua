@@ -18,6 +18,8 @@ end
 
 -- << STATIC CONFIG
 
+local ItemRequestTimeout = 2.0
+
 -- interact distance based checks. ranges are based on my own measurements (thanks for all the folks who helped me with this)
 local DefaultInteractList = {
 	[3] = 8,
@@ -150,6 +152,104 @@ HarmSpells["DEATHKNIGHT"] = {
 	45902, -- ["Blood Strike"], -- 5, but requires weapon, use Pestilence if possible, so keep it after Pestilence in this list
 }
 
+-- Items
+
+FriendItems  = {
+	[5] = {
+--WOTLK		37727, -- Ruby Acorn ### BOTH
+	},
+	[8] = {
+--WOTLK		33278, -- Burning Torch ### BOTH
+	},
+	[10] = {
+		32321, -- Sparrowhawk Net ### BOTH
+	},
+	[15] = {
+		1251, -- Linen Bandage
+		2581, -- Heavy Linen Bandage
+		3530, -- Wool Bandage
+		3531, -- Heavy Wool Bandage
+		6450, -- Silk Bandage
+		6451, -- Heavy Silk Bandage
+		8544, -- Mageweave Bandage
+		8545, -- Heavy Mageweave Bandage
+		14529, -- Runecloth Bandage
+		14530, -- Heavy Runecloth Bandage
+		21990, -- Netherweave Bandage
+		21991, -- Heavy Netherweave Bandage
+--WOTLK		34721, -- Frostweave Bandage
+--WOTLK		34722, -- Heavy Frostweave Bandage
+--WOTLK		38643, -- Thick Frostweave Bandage
+--WOTLK		38640, -- Dense Frostweave Bandage
+	},
+	[20] = {
+		21519, -- Mistletoe
+	},
+	[25] = {
+		31463, -- Zezzak's Shard ### BOTH
+	},
+	[30] = {
+		16893, -- Soulstone
+	},
+	[40] = {
+		34471, -- Vial of the Sunwell
+	},
+	[45] = {
+		32698, -- Wrangling Rope ### BOTH
+	},
+	[60] = {
+--WOTLK		37887, -- Seeds of Nature's Wrath ### BOTH
+	},
+	[80] = {
+--WOTLK		35278, -- Reinforced Net ### BOTH
+	},
+}
+
+HarmItems = {
+	[5] = {
+--WOTLK		37727, -- Ruby Acorn ### BOTH
+	},
+	[8] = {
+--WOTLK		33278, -- Burning Torch ### BOTH
+	},
+	[10] = {
+		32321, -- Sparrowhawk Net ### BOTH
+	},
+	[15] = {
+		33069, -- Sturdy Rope
+	},
+	[20] = {
+		10645, -- Gnomish Death Ray
+	},
+	[25] = {
+		24268, -- Netherweave Net
+--WOTLK		41509, -- Frostweave Net
+		31463, -- Zezzak's Shard ### BOTH
+	},
+	[30] = {
+		835, -- Large Rope Net
+		7734, -- Six Demon Bag
+	},
+	[35] = {
+		24269, -- Heavy Netherweave Net ### not in game ???
+	},
+	[40] = {
+		28767, -- The Decapitator
+	},
+	[45] = {
+		32698, -- Wrangling Rope ### BOTH
+	},
+	[60] = {
+--WOTLK		37887, -- Seeds of Nature's Wrath ### BOTH
+	},
+	[80] = {
+--WOTLK		35278, -- Reinforced Net ### BOTH
+	},
+}
+
+MiscItems = {
+}
+
 -- This could've been done by checking player race as well and creating tables for those, but it's easier like this
 for k, v in pairs(FriendSpells) do
 	tinsert(v, 28880) -- ["Gift of the Naaru"]
@@ -164,6 +264,7 @@ end
 
 local BOOKTYPE_SPELL = BOOKTYPE_SPELL
 local GetSpellInfo = GetSpellInfo
+local GetItemInfo = GetItemInfo
 local UnitCanAttack = UnitCanAttack
 local UnitCanAssist = UnitCanAssist
 local UnitExists = UnitExists
@@ -171,10 +272,18 @@ local UnitIsDeadOrGhost = UnitIsDeadOrGhost
 local tonumber = tonumber
 local CheckInteractDistance = CheckInteractDistance
 local IsSpellInRange = IsSpellInRange
+local IsItemInRange = IsItemInRange
 local UnitIsVisible = UnitIsVisible
 local tinsert = tinsert
 local GetInventoryItemLink = GetInventoryItemLink
+local GetTime = GetTime
 local HandSlotId = GetInventorySlotInfo("HandsSlot")
+local TT = ItemRefTooltip
+
+-- temporary stuff
+
+local itemRequests = nil
+local itemRequestTimeoutAt = nil
 
 -- helper functions
 
@@ -182,6 +291,11 @@ local function print(text)
 	if (DEFAULT_CHAT_FRAME) then 
 		DEFAULT_CHAT_FRAME:AddMessage(text)
 	end
+end
+
+local function requestItemInfo(itemId)
+	itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
+	TT:SetHyperlink(string.format("item:%d", itemId))
 end
 
 -- minRangeCheck is a function to check if spells with minimum range are really out of range, or fail due to range < minRange. See :init() for its setup
@@ -216,8 +330,9 @@ local function addChecker(t, range, minRange, checker)
 	tinsert(t, rc)
 end
 
-local function createCheckerList(spellList, interactList)
+local function createCheckerList(spellList, interactList, itemList)
 	local res = {}
+	local ranges = {}
     if (spellList) then
 	    for i, sid in ipairs(spellList) do
 			local name, _, _, _, _, _, _, minRange, range = GetSpellInfo(sid)
@@ -229,18 +344,52 @@ local function createCheckerList(spellList, interactList)
 				if (range == 0) then
 					range = MeleeRange
 				end
-				addChecker(res, range, minRange, function(unit)
-					if (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1) then return true end
-				end)
+				if (not ranges[range]) then
+					ranges[range] = true
+					addChecker(res, range, minRange, function(unit)
+						if (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1) then return true end
+					end)
+				end
 			end
 	    end
     end
 	if (not interactList) then interactList = DefaultInteractList end
 	for index, range in pairs(interactList) do
-		addChecker(res, range, nil, function(unit)
-			if (CheckInteractDistance(unit, index)) then return true end
-		end)
+		if (not ranges[range]) then
+			ranges[range] = true
+			addChecker(res, range, nil, function(unit)
+				if (CheckInteractDistance(unit, index)) then return true end
+			end)
+		end
     end
+	if (not itemList) then
+		return res
+	end
+	for range, items in pairs(itemList) do
+		if ((not ranges[range]) and (#(items) > 0)) then
+			local itemReq = nil
+			for i, item in ipairs(items) do
+				if (GetItemInfo(item)) then
+					itemReq = nil
+					ranges[range] = true
+					addChecker(res, range, nil, function(unit)
+						if (IsItemInRange(item, unit) == 1) then return true end
+					end)
+					break
+				end
+				if (itemReq == nil) then
+					itemReq = item -- we will request caching of the first item from the list if we can't find any of them in the cache
+				end
+			end
+			if (itemReq ~= nil and (not self.initialized)) then
+				if (itemRequests == nil) then
+					itemRequests = { itemReq }
+				else
+					tinsert(itemRequests, itemReq)
+				end
+			end
+		end
+	end
     return res
 end
 
@@ -314,7 +463,6 @@ end
 -- initialize RangeCheck if not yet initialized or if "forced"
 function RangeCheck:init(forced)
 	if (self.initialized and (not forced)) then return end
-	self.initialized = true
 	local _, playerClass = UnitClass("player")
 	local _, playerRace = UnitRace("player")
 
@@ -349,10 +497,11 @@ function RangeCheck:init(forced)
 	end
 
 	local interactList = InteractLists[playerRace]
-	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList)
-	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList)
-	self.miscRC = createCheckerList(nil, interactList)
+	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList, FriendItems)
+	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems)
+	self.miscRC = createCheckerList(nil, interactList, MiscItems)
 	self.handSlotItem = GetInventoryItemLink("player", HandSlotId)
+	self.initialized = true
 end
 
 -- >> Public API
@@ -418,7 +567,6 @@ function RangeCheck:stopMeasurement()
 	self.measurements = nil
 end
 
-local GetTime = GetTime
 local GetPlayerMapPosition = GetPlayerMapPosition
 function RangeCheck:updateMeasurements()
 	local now = GetTime() - self.measurementStart
@@ -475,6 +623,26 @@ function RangeCheck:activate()
 	self.frame:SetScript("OnEvent", function(frame, ...) self:OnEvent(...) end)
 	self.frame:SetScript("OnUpdate", function(frame, ...)
 		self:init()
+		if (itemRequests ~= nil) then
+			local item = itemRequests[#(itemRequests)]
+			if (itemRequestTimeoutAt == nil) then
+				requestItemInfo(item)
+				return
+			end
+			if (GetItemInfo(item) or GetTime() > itemRequestTimeoutAt) then
+				tremove(itemRequests)
+				if (#(itemRequests) > 0) then
+					item = itemRequests[#(itemRequests)]
+					requestItemInfo(item)
+					return
+				else -- clean up, and force a reinit
+					itemRequests = nil
+					self:init(true)
+				end
+			else
+				return -- still waiting for the answer
+			end
+		end
 		frame:SetScript("OnUpdate", nil)
 		frame:Hide()
 	end)
