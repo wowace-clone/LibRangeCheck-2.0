@@ -11,7 +11,7 @@ License: Public Domain
 local MAJOR_VERSION = "LibRangeCheck-2.0"
 local MINOR_VERSION = tonumber(("$Revision$"):match("%d+")) + 100000
 
-local RangeCheck = LibStub:NewLibrary(MAJOR_VERSION, MINOR_VERSION);
+local RangeCheck = LibStub:NewLibrary(MAJOR_VERSION, MINOR_VERSION)
 if (not RangeCheck) then
 	return
 end
@@ -295,6 +295,7 @@ end
 
 local function requestItemInfo(itemId)
 	itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
+	if (GetItemInfo(itemId)) then return end
 	TT:SetHyperlink(string.format("item:%d", itemId))
 end
 
@@ -328,6 +329,14 @@ local function addChecker(t, range, minRange, checker)
     	end
 	end
 	tinsert(t, rc)
+end
+
+local function addItemRequest(item)
+	if (itemRequests == nil) then
+		itemRequests = { itemReq }
+	else
+		tinsert(itemRequests, itemReq)
+	end
 end
 
 local function createCheckerList(spellList, interactList, itemList)
@@ -382,11 +391,7 @@ local function createCheckerList(spellList, interactList, itemList)
 				end
 			end
 			if (itemReq ~= nil and (not self.initialized)) then
-				if (itemRequests == nil) then
-					itemRequests = { itemReq }
-				else
-					tinsert(itemRequests, itemReq)
-				end
+				addItemRequest(itemReq)
 			end
 		end
 	end
@@ -526,7 +531,57 @@ function RangeCheck:UNIT_INVENTORY_CHANGED(event, unit)
 	end
 end
 
+function RangeCheck:initialOnUpdate()
+		self:init()
+		if (itemRequests ~= nil) then
+			local item = itemRequests[#(itemRequests)]
+			if (itemRequestTimeoutAt == nil) then
+				requestItemInfo(item)
+				return
+			end
+			local name = GetItemInfo(item)
+			if (name ~= nil or GetTime() > itemRequestTimeoutAt) then
+				if (name == nil) then print("### timeout for item:"  .. tostring(item)) else print("### cached item:" .. tostring(item) .. " " .. tostring(name)) end
+				tremove(itemRequests)
+				if (#(itemRequests) > 0) then
+					item = itemRequests[#(itemRequests)]
+					requestItemInfo(item)
+					return
+				else -- clean up, and force a reinit
+					itemRequests = nil
+					itemRequestTimeoutAt = nil
+					self:init(true)
+				end
+			else
+				return -- still waiting for the answer
+			end
+		end
+		self.frame:SetScript("OnUpdate", nil)
+		self.frame:Hide()
+end
+
 -- << DEBUG STUFF
+
+local function addItemRequests(itemList)
+	if (itemList == nil)  then return end
+	for _, item in pairs(itemList) do
+		addItemRequest(item)
+	end
+end
+
+function RangeCheck:cacheAllItems()
+	if ((not self.initialized) or (itemRequests ~= nil)) then
+		print(MAJOR_VERSION .. ": init hasn't finished yet")
+		return
+	end
+	addItemRequests(FriendItems)
+	addItemRequests(HarmItems)
+	addItemRequests(MiscItems)
+	if (itemRequests == nil) then return end
+	print(MAJOR_VERSION .. ": starting item cache")
+	self.frame:SetScript("OnUpdate", function(frame, elapsed) self:initialOnUpdate() end)
+	self.frame:Show()
+end
 
 function RangeCheck:startMeasurement(unit, resultTable)
 	if ((not self.initialized) or (itemRequests ~= nil)) then
@@ -571,10 +626,33 @@ function RangeCheck:stopMeasurement()
 	self.measurements = nil
 end
 
+function RangeCheck:checkItems(itemList)
+	if (itemList == nil) then return end
+	for range, items in pairs(itemList) do
+		for _, item in ipairs(items) do
+			local name = GetItemInfo(item)
+			if (name == nil) then
+				print(MAJOR_VERSION .. ": " .. tostring(item) .. ": not in cache")
+			else
+				print(MAJOR_VERSION .. ": " .. tostring(item) .. ": " .. tostring(name) .. ": " .. tostring(range) .. "yd: " .. tostring(IsItemInRange(item, "target")))
+			end
+		end
+	end
+end
+
+function RangeCheck:checkAllItems()
+	print(MAJOR_VERSION .. ": Checking FriendItems...")
+	self:checkItems(FriendItems)
+	print(MAJOR_VERSION .. ": Checking HarmItems...")
+	self:checkItems(HarmItems)
+	print(MAJOR_VERSION .. ": Checking MiscItems...")
+	self:checkItems(MiscItems)
+end
+
 local GetPlayerMapPosition = GetPlayerMapPosition
 function RangeCheck:updateMeasurements()
 	local now = GetTime() - self.measurementStart
-	local x, y = GetPlayerMapPosition("player");
+	local x, y = GetPlayerMapPosition("player")
 	local t = self.measurements[now]
 	local unit = self.measurementUnit
 	for name, id in pairs(self.spellsToMeasure) do
@@ -625,31 +703,7 @@ function RangeCheck:activate()
 		end
     end
 	self.frame:SetScript("OnEvent", function(frame, ...) self:OnEvent(...) end)
-	self.frame:SetScript("OnUpdate", function(frame, ...)
-		self:init()
-		if (itemRequests ~= nil) then
-			local item = itemRequests[#(itemRequests)]
-			if (itemRequestTimeoutAt == nil) then
-				requestItemInfo(item)
-				return
-			end
-			if (GetItemInfo(item) or GetTime() > itemRequestTimeoutAt) then
-				tremove(itemRequests)
-				if (#(itemRequests) > 0) then
-					item = itemRequests[#(itemRequests)]
-					requestItemInfo(item)
-					return
-				else -- clean up, and force a reinit
-					itemRequests = nil
-					self:init(true)
-				end
-			else
-				return -- still waiting for the answer
-			end
-		end
-		frame:SetScript("OnUpdate", nil)
-		frame:Hide()
-	end)
+	self.frame:SetScript("OnUpdate", function(frame, ...) self:initialOnUpdate() end)
 end
 
 RangeCheck:activate()
