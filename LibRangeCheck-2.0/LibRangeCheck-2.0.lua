@@ -189,7 +189,12 @@ FriendItems  = {
 		31463, -- Zezzak's Shard ### BOTH
 	},
 	[30] = {
-		16893, -- Soulstone
+		1180, -- Scroll of Stamina
+		1478, -- Scroll of Protection II
+		3012, -- Scroll of Agility
+		1712, -- Scroll of Spirit II
+		2290, -- Scroll of Intellect II
+		1711, -- Scroll of Stamina II
 	},
 	[40] = {
 		34471, -- Vial of the Sunwell
@@ -362,6 +367,31 @@ local function createCheckerList(spellList, interactList, itemList, doItemReq)
 			end
 	    end
     end
+	
+	if (itemList) then
+		for range, items in pairs(itemList) do
+			if ((not ranges[range]) and (#(items) > 0)) then
+				local itemReq = nil
+				for i, item in ipairs(items) do
+					if (GetItemInfo(item)) then
+						itemReq = nil
+						ranges[range] = true
+						addChecker(res, range, nil, function(unit)
+							if (IsItemInRange(item, unit) == 1) then return true end
+						end)
+						break
+					end
+					if (itemReq == nil) then
+						itemReq = item -- we will request caching of the first item from the list if we can't find any of them in the cache
+					end
+				end
+				if (doItemReq and itemReq ~= nil) then
+					addItemRequest(itemReq)
+				end
+			end
+		end
+	end
+	
 	if (not interactList) then interactList = DefaultInteractList end
 	for index, range in pairs(interactList) do
 		if (not ranges[range]) then
@@ -371,30 +401,7 @@ local function createCheckerList(spellList, interactList, itemList, doItemReq)
 			end)
 		end
     end
-	if (not itemList) then
-		return res
-	end
-	for range, items in pairs(itemList) do
-		if ((not ranges[range]) and (#(items) > 0)) then
-			local itemReq = nil
-			for i, item in ipairs(items) do
-				if (GetItemInfo(item)) then
-					itemReq = nil
-					ranges[range] = true
-					addChecker(res, range, nil, function(unit)
-						if (IsItemInRange(item, unit) == 1) then return true end
-					end)
-					break
-				end
-				if (itemReq == nil) then
-					itemReq = item -- we will request caching of the first item from the list if we can't find any of them in the cache
-				end
-			end
-			if (doItemReq and itemReq ~= nil) then
-				addItemRequest(itemReq)
-			end
-		end
-	end
+
     return res
 end
 
@@ -474,26 +481,42 @@ function RangeCheck:init(forced)
 	local _, playerRace = UnitRace("player")
 
 	minRangeCheck = nil
-	if (playerClass == "WARRIOR") then
-		-- for warriors, use Intimidating Shout if available
-		local name = GetSpellInfo(5246) -- ["Intimidating Shout"]
-		local spellIdx = findSpellIdx(name)
-		if (spellIdx) then
-			minRangeCheck = function(unit)
-				return (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1)
-			end
-		end
-	elseif (playerClass == "ROGUE") then
-		-- for rogues, use Blind if available
-		local name = GetSpellInfo(2094) -- ["Blind"]
-		local spellIdx = findSpellIdx(name)
-		if (spellIdx) then
-			minRangeCheck = function(unit)
-				return (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1)
+	-- first try to find a nice item we can use for minRangeCheck
+	if (HarmItems[15]) then
+		local items = HarmItems[15]
+		for _, item in ipairs(items) do
+			if (GetItemInfo(item)) then
+				minRangeCheck = function(unit)
+					return (IsItemInRange(item, unit) == 1)
+				end
+				break;
 			end
 		end
 	end
 	if (not minRangeCheck) then
+		-- ok, then try to find some class specific spell
+		if (playerClass == "WARRIOR") then
+			-- for warriors, use Intimidating Shout if available
+			local name = GetSpellInfo(5246) -- ["Intimidating Shout"]
+			local spellIdx = findSpellIdx(name)
+			if (spellIdx) then
+				minRangeCheck = function(unit)
+					return (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1)
+				end
+			end
+		elseif (playerClass == "ROGUE") then
+			-- for rogues, use Blind if available
+			local name = GetSpellInfo(2094) -- ["Blind"]
+			local spellIdx = findSpellIdx(name)
+			if (spellIdx) then
+				minRangeCheck = function(unit)
+					return (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 1)
+				end
+			end
+		end
+	end
+	if (not minRangeCheck) then
+		-- fall back to interact distance checks
 		if  (playerClass == "HUNTER" or playerRace == "Tauren") then
 			-- for hunters, use interact4 as it's safer
 			-- for Taurens interact4 is actually closer than 25yd and interact2 is closer than 8yd, so we can't use that
