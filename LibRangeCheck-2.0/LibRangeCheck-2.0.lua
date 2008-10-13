@@ -152,7 +152,7 @@ HarmSpells["DEATHKNIGHT"] = {
 	45902, -- ["Blood Strike"], -- 5, but requires weapon, use Pestilence if possible, so keep it after Pestilence in this list
 }
 
--- Items
+-- Items [Special thanks to Maldivia for the nice list]
 
 FriendItems  = {
 	[5] = {
@@ -295,7 +295,7 @@ end
 
 local function requestItemInfo(itemId)
 	itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
-	if (GetItemInfo(itemId)) then return end
+	if (itemId == nil or GetItemInfo(itemId)) then return end
 	TT:SetHyperlink(string.format("item:%d", itemId))
 end
 
@@ -333,13 +333,13 @@ end
 
 local function addItemRequest(item)
 	if (itemRequests == nil) then
-		itemRequests = { itemReq }
+		itemRequests = { item }
 	else
-		tinsert(itemRequests, itemReq)
+		tinsert(itemRequests, item)
 	end
 end
 
-local function createCheckerList(spellList, interactList, itemList)
+local function createCheckerList(spellList, interactList, itemList, doItemReq)
 	local res = {}
 	local ranges = {}
     if (spellList) then
@@ -390,7 +390,7 @@ local function createCheckerList(spellList, interactList, itemList)
 					itemReq = item -- we will request caching of the first item from the list if we can't find any of them in the cache
 				end
 			end
-			if (itemReq ~= nil and (not self.initialized)) then
+			if (doItemReq and itemReq ~= nil) then
 				addItemRequest(itemReq)
 			end
 		end
@@ -468,6 +468,8 @@ end
 -- initialize RangeCheck if not yet initialized or if "forced"
 function RangeCheck:init(forced)
 	if (self.initialized and (not forced)) then return end
+	local doItemReq = not self.initialized
+	self.initialized = true
 	local _, playerClass = UnitClass("player")
 	local _, playerRace = UnitRace("player")
 
@@ -502,11 +504,10 @@ function RangeCheck:init(forced)
 	end
 
 	local interactList = InteractLists[playerRace]
-	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList, FriendItems)
-	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems)
-	self.miscRC = createCheckerList(nil, interactList, MiscItems)
+	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList, FriendItems, doItemReq)
+	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems, doItemReq)
+	self.miscRC = createCheckerList(nil, interactList, MiscItems, doItemReq)
 	self.handSlotItem = GetInventoryItemLink("player", HandSlotId)
-	self.initialized = true
 end
 
 -- >> Public API
@@ -539,9 +540,7 @@ function RangeCheck:initialOnUpdate()
 				requestItemInfo(item)
 				return
 			end
-			local name = GetItemInfo(item)
-			if (name ~= nil or GetTime() > itemRequestTimeoutAt) then
-				if (name == nil) then print("### timeout for item:"  .. tostring(item)) else print("### cached item:" .. tostring(item) .. " " .. tostring(name)) end
+			if (GetItemInfo(item) or (GetTime() > itemRequestTimeoutAt)) then
 				tremove(itemRequests)
 				if (#(itemRequests) > 0) then
 					item = itemRequests[#(itemRequests)]
@@ -564,8 +563,10 @@ end
 
 local function addItemRequests(itemList)
 	if (itemList == nil)  then return end
-	for _, item in pairs(itemList) do
-		addItemRequest(item)
+	for _, items in pairs(itemList) do
+		for _, item in ipairs(items) do
+			addItemRequest(item)
+		end
 	end
 end
 
