@@ -529,6 +529,10 @@ end
 -- << DEBUG STUFF
 
 function RangeCheck:startMeasurement(unit, resultTable)
+	if ((not self.initialized) or (itemRequests ~= nil)) then
+		print(MAJOR_VERSION .. ": init hasn't finished yet")
+		return
+	end
 	if (self.measurements) then
 		print(MAJOR_VERSION .. ": measurements already running")
 		return
