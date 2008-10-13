@@ -46,7 +46,7 @@ local VisibleRange = 100
 
 -- list of friendly spells that have different ranges
 local FriendSpells = {}
--- list of harmful spells that have different ranges
+-- list of harmful spells that have different ranges, spells with DeadZone must come first!
 local HarmSpells = {}
 
 FriendSpells["DRUID"] = {
@@ -54,8 +54,8 @@ FriendSpells["DRUID"] = {
 	1126, -- ["Mark of the Wild"], -- 30
 }
 HarmSpells["DRUID"] = {
-	5176, -- ["Wrath"], -- 30 (Nature's Reach: 33, 36)
 	16979, -- ["Feral Charge"], -- 8-25
+	5176, -- ["Wrath"], -- 30 (Nature's Reach: 33, 36)
 	6795, -- ["Growl"], -- 5, 20 in wotlk
 	6807, -- ["Maul"], -- 5
 }
@@ -123,9 +123,9 @@ HarmSpells["SHAMAN"] = {
 
 FriendSpells["WARRIOR"] = {}
 HarmSpells["WARRIOR"] = {
+	100, -- ["Charge"], -- 8-25
 	3018, -- ["Shoot"], -- 8-30
 	2764, -- ["Throw"], -- 30
-	100, -- ["Charge"], -- 8-25
 	355, -- ["Taunt"], -- 5, 20 in wotlk
 	5246, -- ["Intimidating Shout"], -- 10
 	772, -- ["Rend"], -- 5
@@ -150,6 +150,12 @@ HarmSpells["DEATHKNIGHT"] = {
 	56222, -- ["Dark Command"], -- 20
 	50842, -- ["Pestilence"], -- 5
 	45902, -- ["Blood Strike"], -- 5, but requires weapon, use Pestilence if possible, so keep it after Pestilence in this list
+}
+
+local DeadZoneSpells = {
+	["DRUID"] = 16979, -- ["Feral Charge"], -- 8-25
+	["HUNTER"] = 75, -- ["Auto Shot"], -- 8-35 (Hawk Eye: 37, 39, 41)
+	["WARRIOR"] = 100, -- ["Charge"], -- 8-25
 }
 
 -- Items [Special thanks to Maldivia for the nice list]
@@ -307,6 +313,8 @@ end
 -- minRangeCheck is a function to check if spells with minimum range are really out of range, or fail due to range < minRange. See :init() for its setup
 local minRangeCheck = function(unit) return CheckInteractDistance(unit, 2) end
 
+local deadZoneCheck = nil
+
 local function isTargetValid(unit)
 	return UnitExists(unit) and (not UnitIsDeadOrGhost(unit))
 end
@@ -405,9 +413,9 @@ local function createCheckerList(spellList, interactList, itemList, doItemReq)
     return res
 end
 
--- returns minRange, maxRange or nil
+-- returns minRange, maxRange, isInDeadZone or nil
 local function getRange(unit, checkerList, checkVisible)
-	local min, max = 0, nil
+	local min, max, isInDeadZone = 0, nil, nil
     if (checkVisible) then
     	if (UnitIsVisible(unit)) then
     		max = VisibleRange
@@ -424,14 +432,15 @@ local function getRange(unit, checkerList, checkVisible)
 				end
 			elseif (rc.minRange and minRangeCheck(unit)) then
 				max = rc.minRange
+				isInDeadZone = true
 			elseif (min > rc.range) then
-				return min, max
+				return min, max, isInDeadZone
 			else
-				return rc.range, max
+				return rc.range, max, isInDeadZone
 			end
 		end
     end
-    return min, max
+    return min, max, isInDeadZone
 end
 
 -- OK, here comes the actual lib
@@ -449,6 +458,17 @@ RangeCheck.harmRC = RangeCheck.miscRC
 -- "export" it, maybe someone will need it for formatting
 RangeCheck.MeleeRange = MeleeRange
 RangeCheck.VisibleRange = VisibleRange
+
+-- returns if the player has a deadZone (or will have one later)
+function RangeCheck:hasDeadZone()
+	local _, playerClass = UnitClass("player")
+	return (DeadZoneSpells[playerClass] ~= nil)
+end
+
+-- returns if the player is in deadZone regarding unit
+function RangeCheck:isInDeadZone(unit)
+	return (deadZoneCheck and deadZoneCheck(unit))
+end
 
 -- returns minRange, maxRange or nil
 function RangeCheck:getRange(unit, checkVisible)
@@ -531,6 +551,18 @@ function RangeCheck:init(forced)
 	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems, doItemReq)
 	self.miscRC = createCheckerList(nil, interactList, MiscItems, doItemReq)
 	self.handSlotItem = GetInventoryItemLink("player", HandSlotId)
+
+	deadZoneCheck = nil
+	local deadZoneSpell = DeadZoneSpells[playerClass]
+	if (deadZoneSpell) then
+		local name = GetSpellInfo(deadZoneSpell)
+		local spellIdx = findSpellIdx(name)
+		if (spellIdx) then
+			deadZoneCheck = function(unit)
+				return (IsSpellInRange(spellIdx, BOOKTYPE_SPELL, unit) == 0 and minRangeCheck(unit))
+			end
+		end
+	end
 end
 
 -- >> Public API
