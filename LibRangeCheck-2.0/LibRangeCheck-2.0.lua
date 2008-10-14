@@ -431,16 +431,16 @@ local function getRange(unit, checkerList, checkVisible)
 					min = rc.minRange
 				end
 			elseif (rc.minRange and minRangeCheck(unit)) then
-				max = rc.minRange
 				isInDeadZone = true
+				max = rc.minRange
 			elseif (min > rc.range) then
-				return min, max, isInDeadZone
+				return min, max, nil
 			else
 				return rc.range, max, isInDeadZone
 			end
 		end
     end
-    return min, max, isInDeadZone
+    return min, max, isInDeadZone and (max > 5)
 end
 
 -- OK, here comes the actual lib
@@ -459,9 +459,10 @@ RangeCheck.harmRC = RangeCheck.miscRC
 RangeCheck.MeleeRange = MeleeRange
 RangeCheck.VisibleRange = VisibleRange
 
--- returns if the player has a deadZone (or will have one later)
-function RangeCheck:hasDeadZone()
-	local _, playerClass = UnitClass("player")
+-- returns if the unit (default="player") has a deadZone (or will have one later)
+function RangeCheck:hasDeadZone(unit)
+	unit = unit or "player"
+	local _, playerClass = UnitClass(unit)
 	return (DeadZoneSpells[playerClass] ~= nil)
 end
 
