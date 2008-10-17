@@ -159,14 +159,14 @@ HarmSpells["DEATHKNIGHT"] = {
 
 FriendItems  = {
 	[5] = {
-		37727, -- Ruby Acorn ### BOTH
+		37727, -- Ruby Acorn
 	},
 	[8] = {
-		34368, -- Attuned Crystal Cores ### BOTH
-		33278, -- Burning Torch ### BOTH
+		34368, -- Attuned Crystal Cores
+		33278, -- Burning Torch
 	},
 	[10] = {
-		32321, -- Sparrowhawk Net ### BOTH
+		32321, -- Sparrowhawk Net
 	},
 	[15] = {
 		1251, -- Linen Bandage
@@ -190,7 +190,7 @@ FriendItems  = {
 		21519, -- Mistletoe
 	},
 	[25] = {
-		31463, -- Zezzak's Shard ### BOTH
+		31463, -- Zezzak's Shard
 	},
 	[30] = {
 		1180, -- Scroll of Stamina
@@ -199,32 +199,36 @@ FriendItems  = {
 		1712, -- Scroll of Spirit II
 		2290, -- Scroll of Intellect II
 		1711, -- Scroll of Stamina II
+		34191, -- Handful of Snowflakes
+	},
+	[35] = {
+		18904, -- Zorbin's Ultra-Shrinker
 	},
 	[40] = {
 		34471, -- Vial of the Sunwell
 	},
 	[45] = {
-		32698, -- Wrangling Rope ### BOTH
+		32698, -- Wrangling Rope
 	},
 	[60] = {
-		32825, -- Soul Cannon ### BOTH
-		37887, -- Seeds of Nature's Wrath ### BOTH
+		32825, -- Soul Cannon
+		37887, -- Seeds of Nature's Wrath
 	},
 	[80] = {
-		35278, -- Reinforced Net ### BOTH
+		35278, -- Reinforced Net
 	},
 }
 
 HarmItems = {
 	[5] = {
-		37727, -- Ruby Acorn ### BOTH
+		37727, -- Ruby Acorn
 	},
 	[8] = {
-		34368, -- Attuned Crystal Cores ### BOTH
-		33278, -- Burning Torch ### BOTH
+		34368, -- Attuned Crystal Cores
+		33278, -- Burning Torch
 	},
 	[10] = {
-		32321, -- Sparrowhawk Net ### BOTH
+		32321, -- Sparrowhawk Net
 	},
 	[15] = {
 		33069, -- Sturdy Rope
@@ -235,27 +239,29 @@ HarmItems = {
 	[25] = {
 		24268, -- Netherweave Net
 		41509, -- Frostweave Net
-		31463, -- Zezzak's Shard ### BOTH
+		31463, -- Zezzak's Shard
 	},
 	[30] = {
 		835, -- Large Rope Net
 		7734, -- Six Demon Bag
+		34191, -- Handful of Snowflakes
 	},
 	[35] = {
 		24269, -- Heavy Netherweave Net
+		18904, -- Zorbin's Ultra-Shrinker
 	},
 	[40] = {
 		28767, -- The Decapitator
 	},
 	[45] = {
-		32698, -- Wrangling Rope ### BOTH
+		32698, -- Wrangling Rope
 	},
 	[60] = {
-		32825, -- Soul Cannon ### BOTH
-		37887, -- Seeds of Nature's Wrath ### BOTH
+		32825, -- Soul Cannon
+		37887, -- Seeds of Nature's Wrath
 	},
 	[80] = {
-		35278, -- Reinforced Net ### BOTH
+		35278, -- Reinforced Net
 	},
 }
 
@@ -291,13 +297,11 @@ local TT = ItemRefTooltip
 
 -- temporary stuff
 
-local friendItemRequests = copyTable(FriendItems)
-local harmItemRequests = copyTable(HarmItems)
-local itemRequestTimeoutAt = nil
-local failedItemRequests = {}
-local foundNewItem = nil
-local cacheAllItems = nil
-
+local itemRequestTimeoutAt
+local foundNewItems
+local cacheAllItems
+local friendItemRequests
+local harmItemRequests
 
 -- helper functions
 
@@ -307,48 +311,37 @@ local function print(text)
 	end
 end
 
-local function requestItemInfo(itemId)
-	itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
-	if (itemId == nil or GetItemInfo(itemId)) then return end
-	TT:SetHyperlink(string.format("item:%d", itemId))
-end
-
-local function copyTable(src, dest)
-	if (type(dest) ~= "table") then dest = {} end
+local function copyTable(src, dst)
+	if (type(dst) ~= "table") then dst = {} end
 	if (type(src) == "table") then
 		for k, v in pairs(src) do
 			if type(v) == "table" then
-				v = copyTable(v)
+				v = copyTable(v, dst[k])
 			end
-			dest[k] = v
+			dst[k] = v
 		end
 	end
-	return dest
+	return dst
 end
 
---[[ TODO: 
 
-Item caching plan:
+local function initItemRequests(cacheAll)
+	friendItemRequests = copyTable(FriendItems)
+	harmItemRequests = copyTable(HarmItems)
+	cacheAllItems = cacheAll
+	foundNewItems = nil
+end
 
-- dup the Item tables
-- try to grab at least 1 item from each category/range
-- if we have an item for the given range, remove the whole list (from this working copy)
-- keep track of failed items (some items are present in both categories)
-
-]]--
+local function requestItemInfo(itemId)
+	if (not itemId) then return end
+	TT:SetHyperlink(string.format("item:%d", itemId))
+end
 
 -- minRangeCheck is a function to check if spells with minimum range are really out of range, or fail due to range < minRange. See :init() for its setup
 local minRangeCheck = function(unit) return CheckInteractDistance(unit, 2) end
 
 local function isTargetValid(unit)
 	return UnitExists(unit) and (not UnitIsDeadOrGhost(unit))
-end
-
-local function initItemRequests(cacheAll)
-	friendItemRequests = copyTable(FriendItems)
-	harmItemRequests = copyTable(HarmItems)
-	cacheAllItems = cacheAll
-	foundNewItem = nil
 end
 
 -- return the spellIndex of the given spell by scanning the spellbook
@@ -431,7 +424,7 @@ end
 
 -- returns minRange, maxRange  or nil
 local function getRange(unit, checkerList, checkVisible)
-	local min, maxe = 0, nil
+	local min, max = 0, nil
     if (checkVisible) then
     	if (UnitIsVisible(unit)) then
     		max = VisibleRange
@@ -467,6 +460,8 @@ end
 RangeCheck.miscRC = createCheckerList()
 RangeCheck.friendRC = RangeCheck.miscRC
 RangeCheck.harmRC = RangeCheck.miscRC
+
+RangeCheck.failedItemRequests = {}
 
 -- << Public API
 
@@ -583,46 +578,36 @@ function RangeCheck:processItemRequests(itemRequests)
 		local range, items = next(itemRequests)
 		if (not range) then return end
 		while (true) do
-			do 
-				local item = next(items)
-				if (not item) then
+			local i, item = next(items)
+			if (not i) then
+				itemRequests[range] = nil
+				break
+			elseif (self.failedItemRequests[item]) then
+				tremove(items, i)
+			elseif (GetItemInfo(item)) then
+				if (itemRequestTimeoutAt) then
+					foundNewItems = true
+					itemRequestTimeoutAt = nil
+				end
+				if (not cacheAllItems) then
 					itemRequests[range] = nil
-					break
+					break;
 				end
-				if (failedItemRequests[item]) then
-					table.remove(items, 1)
-					-- continue (doh...)
-				end
-				if (itemRequestTimeoutAt == nil) then
-					requestItemInfo(item)
-					itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
-					return true
-				end
+				tremove(items, i)	
+			elseif (not itemRequestTimeoutAt) then
+				requestItemInfo(item)
+				itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
+				return true
+			elseif (GetTime() > itemRequestTimeoutAt) then
+				self.failedItemRequests[item] = true
+				itemRequestTimeoutAt = nil
+				tremove(items, i)
+			else
+				return true -- still waiting for server response
 			end
 		end
 	end
 end
---[[
-	local item = next(itemRequests)
-	if (itemRequestTimeoutAt == nil) then
-		requestItemInfo(item)
-		return
-	end
-	if (GetItemInfo(item) or (GetTime() > itemRequestTimeoutAt)) then
-		itemRequests[item] = nil
-		item = next(itemRequests)
-		if (item) then
-			requestItemInfo(item)
-			return
-		else -- clean up, and force a reinit
-			itemRequests = nil
-			itemRequestTimeoutAt = nil
-			self:init(true)
-		end
-	else
-		return -- still waiting for the answer
-	end
-]]--
 
 function RangeCheck:initialOnUpdate()
 		self:init()
@@ -634,20 +619,24 @@ function RangeCheck:initialOnUpdate()
 			if (self:processItemRequests(harmItemRequests)) then return end
 			harmItemRequests = nil
 		end
-		self:init(foundNewItems)
+		if (foundNewItems) then
+			self:init(true)
+			foundNewItems = nil
+		end
 		self.frame:SetScript("OnUpdate", nil)
 		self.frame:Hide()
 end
 
 -- << DEBUG STUFF
+
 local function pairsByKeys(t, f)
 	local a = {}
-	for n in pairs(t) do table.insert(a, n) end
+	for n in pairs(t) do tinsert(a, n) end
 	table.sort(a, f)
 	local i = 0
 	local iter = function ()
 		i = i + 1
-		if a[i] == nil then
+		if (a[i] == nil) then
 			return nil
 		else
 			return a[i], t[a[i]]
@@ -657,18 +646,18 @@ local function pairsByKeys(t, f)
 end
 
 function RangeCheck:cacheAllItems()
-	if ((not self.initialized) or (harmItemRequests ~= nil)) then
+	if ((not self.initialized) or harmItemRequests) then
 		print(MAJOR_VERSION .. ": init hasn't finished yet")
 		return
 	end
 	print(MAJOR_VERSION .. ": starting item cache")
-	self:initItemRequests(true)
+	initItemRequests(true)
 	self.frame:SetScript("OnUpdate", function(frame, elapsed) self:initialOnUpdate() end)
 	self.frame:Show()
 end
 
 function RangeCheck:startMeasurement(unit, resultTable)
-	if ((not self.initialized) or (itemRequests ~= nil)) then
+	if ((not self.initialized) or harmItemRequests) then
 		print(MAJOR_VERSION .. ": init hasn't finished yet")
 		return
 	end
@@ -711,11 +700,11 @@ function RangeCheck:stopMeasurement()
 end
 
 function RangeCheck:checkItems(itemList)
-	if (itemList == nil) then return end
+	if (not itemList) then return end
 	for range, items in pairsByKeys(itemList) do
 		for _, item in ipairs(items) do
 			local name = GetItemInfo(item)
-			if (name == nil) then
+			if (not name) then
 				print(MAJOR_VERSION .. ": " .. tostring(item) .. ": " .. tostring(range) .. "yd: not in cache")
 			else
 				print(MAJOR_VERSION .. ": " .. tostring(item) .. ": " .. tostring(name) .. ": " .. tostring(range) .. "yd: " .. tostring(IsItemInRange(item, "target")))
@@ -741,8 +730,8 @@ function RangeCheck:updateMeasurements()
 		local last = self.lastMeasurements[name]
 		local curr = (IsSpellInRange(id, BOOKTYPE_SPELL, unit) == 1) and true or false
 		if (last == nil or last ~= curr) then
-			print("### " .. tostring(name) .. ": " .. tostring(last) .. " ->  " .. tostring(curr))
-			if (t == nil) then
+			print(MAJOR_VERSION .. ": " .. tostring(name) .. ": " .. tostring(last) .. " ->  " .. tostring(curr))
+			if (not t) then
 				t = {}
 				t.x, t.y, t.stamp, t.states = x, y, now, {}
 				self.measurements[now] = t
@@ -756,8 +745,8 @@ function RangeCheck:updateMeasurements()
 		local last = self.lastMeasurements[name]
 		local curr = CheckInteractDistance(unit, i) and true or false
 		if (last == nil or last ~= curr) then
-			print("### " .. tostring(name) .. ": " .. tostring(last) .. " ->  " .. tostring(curr))
-			if (t == nil) then
+			print(MAJOR_VERSION .. ": " .. tostring(name) .. ": " .. tostring(last) .. " ->  " .. tostring(curr))
+			if (not t) then
 				t = {}
 				t.x, t.y, t.stamp, t.states = x, y, now, {}
 				self.measurements[now] = t
@@ -784,6 +773,8 @@ function RangeCheck:activate()
 			frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 		end
     end
+	self.initialized = nil
+	initItemRequests()
 	self.frame:SetScript("OnEvent", function(frame, ...) self:OnEvent(...) end)
 	self.frame:SetScript("OnUpdate", function(frame, ...) self:initialOnUpdate() end)
 end
