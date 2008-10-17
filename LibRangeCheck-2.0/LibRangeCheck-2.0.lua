@@ -291,8 +291,13 @@ local TT = ItemRefTooltip
 
 -- temporary stuff
 
-local itemRequests = nil
+local friendItemRequests = copyTable(FriendItems)
+local harmItemRequests = copyTable(HarmItems)
 local itemRequestTimeoutAt = nil
+local failedItemRequests = {}
+local foundNewItem = nil
+local cacheAllItems = nil
+
 
 -- helper functions
 
@@ -339,6 +344,13 @@ local function isTargetValid(unit)
 	return UnitExists(unit) and (not UnitIsDeadOrGhost(unit))
 end
 
+local function initItemRequests(cacheAll)
+	friendItemRequests = copyTable(FriendItems)
+	harmItemRequests = copyTable(HarmItems)
+	cacheAllItems = cacheAll
+	foundNewItem = nil
+end
+
 -- return the spellIndex of the given spell by scanning the spellbook
 local function findSpellIdx(spellName)
 	local i = 1
@@ -364,15 +376,7 @@ local function addChecker(t, range, minRange, checker)
 	tinsert(t, rc)
 end
 
-local function addItemRequest(item)
-	if (itemRequests == nil) then
-		itemRequests = { [item] = true }
-	else
-		itemRequests[item] = true
-	end
-end
-
-local function createCheckerList(spellList, interactList, itemList, doItemReq)
+local function createCheckerList(spellList, interactList, itemList)
 	local res = {}
 	local ranges = {}
     if (spellList) then
@@ -399,22 +403,14 @@ local function createCheckerList(spellList, interactList, itemList, doItemReq)
 	if (itemList) then
 		for range, items in pairs(itemList) do
 			if ((not ranges[range]) and next(items)) then
-				local itemReq = nil
 				for i, item in ipairs(items) do
 					if (GetItemInfo(item)) then
-						itemReq = nil
 						ranges[range] = true
 						addChecker(res, range, nil, function(unit)
 							if (IsItemInRange(item, unit) == 1) then return true end
 						end)
 						break
 					end
-					if (itemReq == nil) then
-						itemReq = item -- we will request caching of the first item from the list if we can't find any of them in the cache
-					end
-				end
-				if (doItemReq and itemReq ~= nil) then
-					addItemRequest(itemReq)
 				end
 			end
 		end
@@ -503,7 +499,6 @@ end
 -- initialize RangeCheck if not yet initialized or if "forced"
 function RangeCheck:init(forced)
 	if (self.initialized and (not forced)) then return end
-	local doItemReq = not self.initialized
 	self.initialized = true
 	local _, playerClass = UnitClass("player")
 	local _, playerRace = UnitRace("player")
@@ -555,9 +550,9 @@ function RangeCheck:init(forced)
 	end
 
 	local interactList = InteractLists[playerRace]
-	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList, FriendItems, doItemReq)
-	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems, doItemReq)
-	self.miscRC = createCheckerList(nil, interactList, nil, doItemReq)
+	self.friendRC = createCheckerList(FriendSpells[playerClass], interactList, FriendItems)
+	self.harmRC = createCheckerList(HarmSpells[playerClass], interactList, HarmItems)
+	self.miscRC = createCheckerList(nil, interactList, nil)
 	self.handSlotItem = GetInventoryItemLink("player", HandSlotId)
 end
 
@@ -583,29 +578,63 @@ function RangeCheck:UNIT_INVENTORY_CHANGED(event, unit)
 	end
 end
 
-function RangeCheck:initialOnUpdate()
-		self:init()
-		if (itemRequests ~= nil) then
-			local item = next(itemRequests)
-			if (itemRequestTimeoutAt == nil) then
-				requestItemInfo(item)
-				return
-			end
-			if (GetItemInfo(item) or (GetTime() > itemRequestTimeoutAt)) then
-				itemRequests[item] = nil
-				item = next(itemRequests)
-				if (item) then
-					requestItemInfo(item)
-					return
-				else -- clean up, and force a reinit
-					itemRequests = nil
-					itemRequestTimeoutAt = nil
-					self:init(true)
+function RangeCheck:processItemRequests(itemRequests)
+	while (true) do
+		local range, items = next(itemRequests)
+		if (not range) then return end
+		while (true) do
+			do 
+				local item = next(items)
+				if (not item) then
+					itemRequests[range] = nil
+					break
 				end
-			else
-				return -- still waiting for the answer
+				if (failedItemRequests[item]) then
+					table.remove(items, 1)
+					-- continue (doh...)
+				end
+				if (itemRequestTimeoutAt == nil) then
+					requestItemInfo(item)
+					itemRequestTimeoutAt = GetTime() + ItemRequestTimeout
+					return true
+				end
 			end
 		end
+	end
+end
+--[[
+	local item = next(itemRequests)
+	if (itemRequestTimeoutAt == nil) then
+		requestItemInfo(item)
+		return
+	end
+	if (GetItemInfo(item) or (GetTime() > itemRequestTimeoutAt)) then
+		itemRequests[item] = nil
+		item = next(itemRequests)
+		if (item) then
+			requestItemInfo(item)
+			return
+		else -- clean up, and force a reinit
+			itemRequests = nil
+			itemRequestTimeoutAt = nil
+			self:init(true)
+		end
+	else
+		return -- still waiting for the answer
+	end
+]]--
+
+function RangeCheck:initialOnUpdate()
+		self:init()
+		if (friendItemRequests) then
+			if (self:processItemRequests(friendItemRequests)) then return end
+			friendItemRequests = nil
+		end
+		if (harmItemRequests) then
+			if (self:processItemRequests(harmItemRequests)) then return end
+			harmItemRequests = nil
+		end
+		self:init(foundNewItems)
 		self.frame:SetScript("OnUpdate", nil)
 		self.frame:Hide()
 end
@@ -627,24 +656,13 @@ local function pairsByKeys(t, f)
 	return iter
 end
 
-local function addItemRequests(itemList)
-	if (itemList == nil)  then return end
-	for _, items in pairs(itemList) do
-		for _, item in ipairs(items) do
-			addItemRequest(item)
-		end
-	end
-end
-
 function RangeCheck:cacheAllItems()
-	if ((not self.initialized) or (itemRequests ~= nil)) then
+	if ((not self.initialized) or (harmItemRequests ~= nil)) then
 		print(MAJOR_VERSION .. ": init hasn't finished yet")
 		return
 	end
-	addItemRequests(FriendItems)
-	addItemRequests(HarmItems)
-	if (itemRequests == nil) then return end
 	print(MAJOR_VERSION .. ": starting item cache")
+	self:initItemRequests(true)
 	self.frame:SetScript("OnUpdate", function(frame, elapsed) self:initialOnUpdate() end)
 	self.frame:Show()
 end
