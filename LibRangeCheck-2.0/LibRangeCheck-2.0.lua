@@ -465,6 +465,7 @@ RangeCheck.failedItemRequests = {}
 
 -- << Public API
 
+RangeCheck.CHECKERS_CHANGED = "CHECKERS_CHANGED"
 -- "export" it, maybe someone will need it for formatting
 RangeCheck.MeleeRange = MeleeRange
 RangeCheck.VisibleRange = VisibleRange
@@ -559,6 +560,10 @@ function RangeCheck:init(forced)
     self.harmRC = createCheckerList(HarmSpells[playerClass], HarmItems, interactList)
     self.miscRC = createCheckerList(nil, nil, interactList)
     self.handSlotItem = GetInventoryItemLink("player", HandSlotId)
+    if self.callbacks then
+        -- FIXME: only fire if they actually changed
+        self.callbacks:Fire(self.CHECKERS_CHANGED)
+    end
 end
 
 -- >> Public API
@@ -862,6 +867,18 @@ function RangeCheck:activate()
     self.frame:SetScript("OnEvent", function(frame, ...) self:OnEvent(...) end)
     self.frame:SetScript("OnUpdate", function(frame, ...) self:initialOnUpdate() end)
 end
+
+--- BEGIN CallbackHandler stuff
+
+RangeCheck.RegisterCallback = RangeCheck.RegisterCallback or function(...)
+    local CBH = LibStub("CallbackHandler-1.0");
+    RangeCheck.RegisterCallback = nil -- extra safety, we shouldn't get this far if CBH is not found, but better an error later than an infinite recursion now
+    RangeCheck.callbacks = CBH:New(RangeCheck)
+    -- ok, CBH hopefully injected or new shiny RegisterCallback
+    return RangeCheck.RegisterCallback(...)
+end
+
+--- END
 
 RangeCheck:activate()
 RangeCheck = nil
