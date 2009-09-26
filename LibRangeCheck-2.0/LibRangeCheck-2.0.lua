@@ -661,7 +661,7 @@ function lib:GetFriendMinChecker(range, exactMatch)
     repeat
         range = range + 1
         checker = self.friendRCByRange[range]
-    until not checker
+    until checker
     return checker
 end
 
@@ -677,11 +677,11 @@ function lib:GetHarmMinChecker(range, exactMatch)
     repeat
         range = range + 1
         checker = self.harmRCByRange[range]
-    until not checker
+    until checker
     return checker
 end
 
-function lib:GetFriendMinChecker(range, exactMatch)
+function lib:GetFriendMaxChecker(range, exactMatch)
     local checker = self.friendRCByRange[range]
     if checker or exactMatch then
         return checker
@@ -693,23 +693,24 @@ function lib:GetFriendMinChecker(range, exactMatch)
     repeat
         range = range - 1
         checker = self.friendRCByRange[range]
-    until not checker
+    until checker
     return checker
 end
 
-function lib:GetHarmMinChecker(range, exactMatch)
+function lib:GetHarmMaxChecker(range, exactMatch)
     local checker = self.harmRCByRange[range]
     if checker or exactMatch then
         return checker
     end
     local minChecker = self.harmRC[#self.harmRC]
     if not minChecker or range < minChecker.range then
+        print("### fail", minChecker, range, minChecker and minChecker.range or nil)
         return nil
     end
     repeat
         range = range - 1
         checker = self.harmRCByRange[range]
-    until not checker
+    until checker
     return checker
 end
 
