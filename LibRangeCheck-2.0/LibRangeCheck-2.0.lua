@@ -42,7 +42,6 @@ local InteractLists = {
 }
 
 local MeleeRange = 5
-local VisibleRange = 100
 
 -- list of friendly spells that have different ranges
 local FriendSpells = {}
@@ -534,10 +533,19 @@ lib.failedItemRequests = {}
 
 -- << Public API
 
+--@do-not-package@
+-- this is here just for .docmeta
+--- A checker function
+-- @param unit the unit to check range to
+-- @return true if the unit is within the range for this checker
+local function checker(unit)
+end
+
+--@end-do-not-package@ 
+
 lib.CHECKERS_CHANGED = "CHECKERS_CHANGED"
 -- "export" it, maybe someone will need it for formatting
 lib.MeleeRange = MeleeRange
-lib.VisibleRange = VisibleRange
 
 function lib:findSpellIndex(spell)
     if type(spell) == 'number' then
@@ -545,18 +553,6 @@ function lib:findSpellIndex(spell)
     end
     if not spell then return nil end
     return findSpellIdx(spell)
-end
-
--- returns minRange, maxRange or nil
-function lib:getRange(unit)
-    if not isTargetValid(unit) then return nil end
-    if UnitCanAttack("player", unit) then
-        return getRange(unit, self.harmRC)
-    elseif UnitCanAssist("player", unit) then
-        return getRange(unit, self.friendRC)
-    else
-        return getRange(unit, self.miscRC)
-    end
 end
 
 -- returns the range estimate as a string
@@ -718,9 +714,31 @@ function lib:GetFriendChecker(range)
     return self.friendRCByRange(range)
 end
 
+--- Return a checker for the given range for enemy units
+-- @param range the range to check for
+-- @return checker function or nil if no suitable checker is available
+-- @see checker
 function lib:GetHarmChecker(range)
     return self.harmRCByRange(range)
 end
+
+--- Get a range estimate as minRange, maxRange
+-- @param unit the target unit to check range to
+-- @usage local minRange, maxRange = rc:GetRange('target')
+-- @return minRange, maxRange pair if a range estimate could be determined, nil otherwise. maxRange is nil if unit is further away then the highest possible range we can check
+function lib:GetRange(unit)
+    if not isTargetValid(unit) then return nil end
+    if UnitCanAttack("player", unit) then
+        return getRange(unit, self.harmRC)
+    elseif UnitCanAssist("player", unit) then
+        return getRange(unit, self.friendRC)
+    else
+        return getRange(unit, self.miscRC)
+    end
+end
+
+-- keep this for compatibility
+lib.getRange = lib.GetRange
 
 -- >> Public API
 
