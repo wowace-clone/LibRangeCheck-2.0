@@ -462,7 +462,7 @@ local function createCheckerList(spellList, itemList, interactList)
     if spellList then
         for i = 1, #spellList do
             local sid = spellList[i]
-            local name, _, _, _, _, _, _, minRange, range = GetSpellInfo(sid)
+            local name, _, _, _, minRange, range = GetSpellInfo(sid)
             local spellIdx = findSpellIdx(name)
             if spellIdx and range then
                 minRange = math.floor(minRange + 0.5)
@@ -1085,7 +1085,7 @@ function lib:checkSpells(spellList, verbose)
     if not spellList then return end
     for i = 1, #spellList do 
         local sid = spellList[i]
-        local name, _, _, _, _, _, _, minRange, range = GetSpellInfo(sid)
+        local name, _, _, _, minRange, range = GetSpellInfo(sid)
         if (not name) or (not range) then
             print(MAJOR_VERSION .. ": " .. tostring(sid) .. ": " .. tostring(range) .. "yd: |cffeda500invalid spell id|r")
         else
