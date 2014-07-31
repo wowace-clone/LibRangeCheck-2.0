@@ -436,6 +436,9 @@ end
 
 -- return the spellIndex of the given spell by scanning the spellbook
 local function findSpellIdx(spellName)
+    if not spellName or spellName == "" then
+        return nil
+    end
     for i = 1, getNumSpells() do
         local spell, rank = GetSpellBookItemName(i, BOOKTYPE_SPELL)
         if spell == spellName then return i end
@@ -653,7 +656,6 @@ function lib:findSpellIndex(spell)
     if type(spell) == 'number' then
         spell = GetSpellInfo(spell)
     end
-    if not spell then return nil end
     return findSpellIdx(spell)
 end
 
@@ -1086,7 +1088,7 @@ function lib:checkSpells(spellList, verbose)
     for i = 1, #spellList do 
         local sid = spellList[i]
         local name, _, _, _, minRange, range = GetSpellInfo(sid)
-        if (not name) or (not range) then
+        if (not name) or (name == "") or (not range) then
             print(MAJOR_VERSION .. ": " .. tostring(sid) .. ": " .. tostring(range) .. "yd: |cffeda500invalid spell id|r")
         else
             local spellIdx = self:findSpellIndex(sid)
