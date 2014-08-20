@@ -386,9 +386,7 @@ local checkers_SpellWithMin = setmetatable({}, {
 local checkers_Item = setmetatable({}, {
     __index = function(t, item)
         local func = function(unit)
-            if IsItemInRange(item, unit) == 1 then
-                 return true
-            end
+            return IsItemInRange(item, unit)
         end
         t[item] = func
         return func
@@ -686,7 +684,7 @@ function lib:init(forced)
             local item = items[i]
             if GetItemInfo(item) then
                 minRangeCheck = function(unit)
-                    return (IsItemInRange(item, unit) == 1)
+                    return IsItemInRange(item, unit)
                 end
                 break
             end
